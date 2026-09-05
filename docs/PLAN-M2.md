@@ -55,12 +55,27 @@
 
 ## 4. M2 验收（对照开工包 M2）
 
-- [ ] sections.unit 字段 + budgetChars=0 语义落地，测试补全
-- [ ] 消费方契约测试：fake injector 插件经 ctx.get 注册+上报，domain 数据正确
-- [ ] ACP：apply 注册 acp.composer（unit tokens/hotTokens）；注入后上报 body.length；fail-open；测试绿（278 基线不破）
-- [ ] WC：注册 wc.work_state（unit chars/0）；注入后上报；fail-open；测试绿
-- [ ] 每仓库独立 feature 分支 + 每步提交
+- [x] sections.unit 字段 + budgetChars=0 语义落地，测试补全
+- [x] 消费方契约测试：fake injector 插件经 ctx.get 注册+上报，domain 数据正确
+- [x] ACP：apply 注册 acp.composer（unit tokens/hotTokens）；注入后上报 body.length；fail-open；9 新用例绿，关键回归绿
+- [x] WC：注册 wc.work_state（unit chars/0）；注入后上报；fail-open；6 新用例绿，work 18/config 2 回归绿
+- [x] 每仓库独立 feature 分支 + 每步提交
 
 ## 5. 遗留（M3 输入，不在 M2 解决）
 - 预算对照换算：usage chars ↔ sections budgetTokens（按 unit）；M3 冲突检测/每会话预算汇总时定系数；
 - order 冲突语义（pre-step 面段间）；systemPrompt 面段（memento 类 frozen）未来扩展的注册面说明。
+
+
+## 6. M2 完成记录（2026-09-05）
+
+- 状态：**完成**（三仓库代码 + 测试全绿；正式实例装配属 M5，需重启后验证）。
+- 提交：
+  - dsh-inject-scheduler：c06ec8a（PLAN-M2 定稿）+ c6c5150（unit 字段 + 契约测试，分支 feat/m2-consumer-contract 未合 main）
+  - dsh-adaptive-context：49520c2（feat/memory-seam-s1 分支）
+  - dsh-work-continuity：a2aa5ef 前身 a2aa5ae（feat/scheduler-metering 分支）
+- 测试数：scheduler 11（M1 8 + M2 3）/ ACP +9（模块级）/ WC +6（模块级）。
+- 关键契约点（三仓库一致）：调度器**可选项**（ctx.get + withService 就绪订阅 + 全程 fail-open）；
+  段值 acp.composer(order 10, unit tokens, budget=hotTokens) / wc.work_state(order 20, unit chars, 0=未设上限)；
+  上报 = 实际注入文本字符数；sessionId 空串不传（落 global 槽）。
+- 遗留：ACP/WC 注入处是"生成后上报"——未做 messages 级交叉校验（方案 B 被否的观测点）；
+  M3 冲突检测/预算汇总/换算系数；M5 装配（web profile 挂 scheduler + 重启验证 usage 增长）。

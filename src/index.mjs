@@ -26,12 +26,15 @@ export async function apply(ctx, config = {}) {
 
   // domain/changed 订阅：本域事件的写链序流（= B10 面板数据源；M1 先验证通路）
   ctx.on('domain/changed', (change) => {
-    if (config.verbose && change.domain === DOMAIN_NAME) {
-      const where = change.table || 'global'
-      ctx.logger?.info?.(
-        '[inject-scheduler] ' + where + ' ' + change.key + ' ' + change.operation +
-        (change.operation === 'put' ? ' chars=' + JSON.stringify(change.value?.injectedChars ?? null) : ''),
-      )
+    if (!config.verbose || change.domain !== DOMAIN_NAME) return
+    const where = change.table || 'global'
+    const value = change.operation === 'put' ? change.value : null
+    let detail = ''
+    if (value && where === 'usage') {
+      detail = ' chars=' + value.injectedChars + ' count=' + value.count
+    } else if (value && where === 'sections') {
+      detail = ' order=' + value.order + ' budget=' + value.budgetChars + ' ' + value.unit
     }
+    ctx.logger?.info?.('[inject-scheduler] ' + where + ' ' + change.key + ' ' + change.operation + detail)
   })
 }

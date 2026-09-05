@@ -14,7 +14,7 @@ const dshEvents = (changes) => changes.filter((c) => c.domain === DOMAIN_NAME)
 test('M1: apply 可启动，空态读不炸', async () => {
   const h = await harness()
   try {
-    assert.equal(h.scheduler.ready, true)
+    assert.equal(typeof h.scheduler.registerSection, 'function')
     assert.equal(h.scheduler.domainName, DOMAIN_NAME)
     assert.deepEqual(h.scheduler.listSections(), [])
     assert.deepEqual(h.scheduler.getUsage(), [])

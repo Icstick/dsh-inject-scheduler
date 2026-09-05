@@ -22,7 +22,6 @@ export interface UsageRecord {
 }
 
 export interface InjectSchedulerService {
-  readonly ready: boolean
   readonly domainName: string
   registerSection(input: Omit<SectionRecord, 'updatedAt'>): Promise<{ ok: true; key: string } | { ok: false; error: string }>
   unregisterSection(key: string): Promise<boolean>

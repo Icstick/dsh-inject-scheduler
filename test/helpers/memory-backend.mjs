@@ -1,5 +1,5 @@
 // test/helpers/memory-backend.mjs — 内存 StorageBackend 测试替身（移植官方
-// packages/storage/storage-domain/tests/helpers/memory-backend.ts，161 行版）。
+// packages/storage/storage-domain/tests/helpers/memory-backend.ts，mjs 去类型精简版）。
 // 官方 helper 位于 tests/ 不在发布面（storage-domain exports 不含 tests），
 // 第三方插件无法 import —— 按 MIT 许可移植为 mjs。语义与官方一致：
 //   版本戳记/version-mismatch、closed、写原子性、close 幂等；
