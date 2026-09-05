@@ -7,9 +7,22 @@ export interface SectionRecord {
   key: string
   plugin: string
   order: number
+  /** 0 = 未设上限 */
   budgetChars: number
+  /** budgetChars 计值口径；usage 记账恒为字符数 */
+  unit: 'chars' | 'tokens'
   refresh: 'frozen' | 'reload' | 'per-turn'
   updatedAt: number
+}
+
+/** 输入非法/策略拒绝时的统一错误面 */
+export interface ServiceError {
+  ok: false
+  error: string
+  /** conflictPolicy=reject 时：冲突方段 key 列表 */
+  conflictWith?: string[]
+  /** conflictPolicy=reject 时：完整冲突描述 */
+  message?: string
 }
 
 export interface UsageRecord {
@@ -21,14 +34,37 @@ export interface UsageRecord {
   updatedAt: number
 }
 
+export interface SessionSectionReport {
+  section: string
+  plugin: string
+  order: number
+  unit: 'chars' | 'tokens'
+  budgetChars: number
+  injectedChars: number
+  count: number
+  /** unit=tokens 段的字符→token 估算；unit=chars 段为 null */
+  estimatedTokens: number | null
+  /** 预算占用率（>1 = 超预算）；budgetChars=0（未设上限）为 null */
+  usageRatio: number | null
+}
+
+export interface SessionReport {
+  sessionId: string
+  date: string
+  charPerToken: number
+  sections: SessionSectionReport[]
+  totals: { injectedChars: number; estimatedTokens: number; sections: number }
+}
+
 export interface InjectSchedulerService {
   readonly domainName: string
-  registerSection(input: Omit<SectionRecord, 'updatedAt'>): Promise<{ ok: true; key: string } | { ok: false; error: string }>
+  registerSection(input: Omit<SectionRecord, 'updatedAt'>): Promise<{ ok: true; key: string } | ServiceError>
   unregisterSection(key: string): Promise<boolean>
   recordUsage(input: { sessionId?: string; section: string; injectedChars: number; date?: string })
-    : Promise<{ ok: true; key: string; total: number; count: number } | { ok: false; error: string }>
+    : Promise<{ ok: true; key: string; total: number; count: number } | ServiceError>
   listSections(): SectionRecord[]
   getUsage(filter?: { sessionId?: string; date?: string; section?: string }): UsageRecord[]
+  getSessionReport(filter?: { sessionId?: string; date?: string }): SessionReport
 }
 
 declare module '@deepseek-ai/cordis' {

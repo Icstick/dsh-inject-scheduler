@@ -34,10 +34,13 @@
     "@deepseek-ai/dsh-storage": "0.1.2-rc.1",
     "@deepseek-ai/dsh-storage-domain": "0.1.2-rc.1",
     "@deepseek-ai/schemastery": ">=3.0.0",
-    "@types/node": "^26.0.0"
+    "@types/node": "^26.0.0",
+    "oxlint": "0.18.1"
   },
   "scripts": {
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --test \"test/*.test.mjs\"",
+    "lint": "oxlint",
+    "test:all": "node test/m1.test.mjs && node test/m2.test.mjs && node test/m3.test.mjs && node test/robustness.test.mjs"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

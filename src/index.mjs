@@ -14,6 +14,10 @@ export const inject = ['storageDomain']
 export const Config = z.object({
   /** domain/changed 事件日志开关（订阅通路可观测；默认关，避免每笔记账刷屏） */
   verbose: z.boolean().default(false),
+  /** 同 order 段冲突处理：warn（记录并注册）/ reject（拒绝注册返回 ok:false） */
+  conflictPolicy: z.union(['warn', 'reject'].map((v) => z.const(v))).default('warn'),
+  /** token↔字符经验换算系数（getSessionReport 对照 unit=tokens 段预算的估算用；非计费） */
+  charPerToken: z.number().min(0.1).max(10).default(1.5),
 })
 
 export async function apply(ctx, config = {}) {
@@ -21,7 +25,10 @@ export async function apply(ctx, config = {}) {
   // effect 回调必须返回清理函数（卸载时调用）——直接执行会被当作立即注册的 disposer
   ctx.effect(() => () => domain.close(), 'injectScheduler.domainClose')
 
-  const service = createInjectSchedulerService(domain)
+  const service = createInjectSchedulerService(domain, ctx, {
+    conflictPolicy: config.conflictPolicy ?? 'warn',
+    charPerToken: config.charPerToken ?? 1.5,
+  })
   ctx.provide('injectScheduler', service)
 
   // domain/changed 订阅：本域事件的写链序流（= B10 面板数据源；M1 先验证通路）

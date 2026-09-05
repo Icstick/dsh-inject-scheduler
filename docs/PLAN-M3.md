@@ -57,7 +57,16 @@
 7. 缺省 config 面：conflictPolicy 默认 'warn'；charPerToken 默认 1.5
 
 ## 4. 验收（对照开工包 M3）
-- [ ] 同 order 冲突启动日志明确（warn）且配置可改为否决（reject 返回 ok:false）
-- [ ] 每会话注入预算汇总可查（对照 ACP hotTokens 口径：unit=tokens 段经 charPerToken 估算）
-- [ ] 既有 11 测试全绿 + 新用例绿；每步提交
-- [ ] 遗留记录：maid 压缩事件对照 → M4 输入
+- [x] 同 order 冲突启动日志明确（warn）且配置可改为否决（reject 返回 ok:false + conflictWith）
+- [x] 每会话注入预算汇总可查（getSessionReport：unit=tokens 段经 charPerToken 估算，chars 段同口径直比）
+- [x] 既有 11 测试全绿 + 新 6 用例绿（17/17）；每步提交 41e5b4e/8347821
+- [x] 遗留记录：maid 压缩事件对照 → M4 输入（已写入 §1 范围收敛）
+
+
+## 5. M3 完成记录（2026-09-05）
+
+- 状态：**完成**（feat/m3-conflict-budget 分支，2 commits；未合 main 等 M5 前统一验收）。
+- 行为保持重构（同批 main 53ee395）：删 ready/name 恒真冗余、verbose 日志按表分支、
+  schema 字段规则消重、parseOr 统一 ok 面——11/11 回归护航。
+- 踩坑：schemastery z 无 .enum（zod API）→ Config 枚举用 z.union + z.const（ACP 惯例）。
+- 范围收敛记录：maid 压缩事件对照 → M4（compaction 事件属 host 层，记账联动另需契约研究）。
