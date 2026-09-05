@@ -1,0 +1,4 @@
+# dsh-inject-scheduler bundle patch: mount the injection scheduler plugin.
+- insert:
+    - id: inject-scheduler
+      name: dsh-inject-scheduler
