@@ -1,6 +1,6 @@
 // src/service.mjs — Service Definition：ctx.injectScheduler。
 //
-// M1–M3 面（P7 开工包）：段注册表 + 用量账 + 读 + 冲突检测/预算汇总；不接 pre-step、不做排序执行。
+// M1–M4 面（P7 开工包）：段注册表 + 用量账 + 读 + 冲突检测/预算汇总 + B10 数据源（曲线/快照）。
 // 写路径：zod parse（写侧自校验）→ domain 表 put/update（域写链串行）。
 // 竞争：首笔 put + 后续 update 累加；update missing-key（并发首写窗口）→ 重试 put。
 // 生命周期：服务构造前提 = domain 已 open（apply await 后创建），无独立 ready 状态——
@@ -138,6 +138,45 @@ export function createInjectSchedulerService(domain, ctx, options = {}) {
           (sessionId === undefined || v.sessionId === sessionId) &&
           (date === undefined || v.date === date) &&
           (section === undefined || v.section === section))
+    },
+
+    /**
+     * 注入曲线明细（M4/B10 数据源）：按 (date, sessionId, section) 字典序——
+     * YYYY-MM-DD 字符串序即时间序。消费方自行聚合（按日合计/按 section 堆叠）。
+     */
+    usageSeries(filter = {}) {
+      const { sessionId, date, section, dateFrom, dateTo } = filter
+      return [...usage.entries()]
+        .map(([, v]) => v)
+        .filter((v) =>
+          (sessionId === undefined || v.sessionId === sessionId) &&
+          (date === undefined || v.date === date) &&
+          (section === undefined || v.section === section) &&
+          (dateFrom === undefined || v.date >= dateFrom) &&
+          (dateTo === undefined || v.date <= dateTo))
+        .sort((a, b) =>
+          (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) ||
+          (a.sessionId < b.sessionId ? -1 : a.sessionId > b.sessionId ? 1 : 0) ||
+          (a.section < b.section ? -1 : a.section > b.section ? 1 : 0))
+    },
+
+    /**
+     * B10 启动基线/备份/调试/迁移快照（M4）：内容与同刻 listSections()/getUsage()
+     * 相等（对账承诺），排序稳定（sections 按 order；usage 按 sessionId/date/section）。
+     * 消费模式 = 启动快照 + 运行期 domain/changed 增量 merge（见 docs/B10-CONTRACT.md）。
+     */
+    exportState() {
+      const byKey = (a, b) =>
+        (a.sessionId < b.sessionId ? -1 : a.sessionId > b.sessionId ? 1 : 0) ||
+        (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) ||
+        (a.section < b.section ? -1 : a.section > b.section ? 1 : 0)
+      return {
+        format: 'dsh-inject-scheduler-state',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        sections: [...sections.entries()].map(([, v]) => v).sort((a, b) => a.order - b.order),
+        usage: [...usage.entries()].map(([, v]) => v).sort(byKey),
+      }
     },
 
     /**

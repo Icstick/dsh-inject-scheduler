@@ -64,6 +64,14 @@ export interface InjectSchedulerService {
     : Promise<{ ok: true; key: string; total: number; count: number } | ServiceError>
   listSections(): SectionRecord[]
   getUsage(filter?: { sessionId?: string; date?: string; section?: string }): UsageRecord[]
+  usageSeries(filter?: { sessionId?: string; date?: string; section?: string; dateFrom?: string; dateTo?: string }): UsageRecord[]
+  exportState(): {
+    format: 'dsh-inject-scheduler-state'
+    version: 1
+    exportedAt: string
+    sections: SectionRecord[]
+    usage: UsageRecord[]
+  }
   getSessionReport(filter?: { sessionId?: string; date?: string }): SessionReport
 }
 
