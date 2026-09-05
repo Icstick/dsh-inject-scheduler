@@ -1,6 +1,29 @@
 # M5-ASSEMBLY — 正式实例装配记录与验证清单
 
-> 日期：2026-09-05 · 状态：**装配完成，等待 DSH 重启后验证**（重启会中断当前会话——验证由重启后的新会话执行）。
+> 日期：2026-09-05 · 状态：**首轮验证发现问题并修复，等待第二次重启**。
+
+## 0. 首轮验证结果与修复（2026-09-05，重启后新会话执行）
+
+发现（实证）：插件加载 ✓、acp.composer 段注册 ✓（withService 等就绪生效）、
+**wc.work_state 缺失 + usage 0 行**（26 分钟无写入）。
+
+根因（两层）：
+1. **patch 插入守卫 bug（真因）**：最初向 ACP/WC 插接线代码时，"已插入"守卫用
+   `!t.includes('调用串')`——函数定义行（export function reportXxx(ctx, sessionId, body)）
+   本身就包含调用串 → 守卫误判已插入 → **真实调用点从未插入**。注册调用侥幸
+   （registerAcpSection 定义带默认参数 `= {}`，字符串不匹配）所以 acp.composer 在；
+   ACP 上报调用与 WC 全部两处接线都被吞。模块级测试只测函数本身，**不覆盖接线点** → 全绿假象。
+2. 时序疑云澄清：cordis notify 实际发**两次**（provide 时 + fiber 转 ACTIVE 时，
+   vendor/cordis/src/fiber.ts _updateState）——strict ctx.get 的等待路径也能在第二次
+   注册成功，**不是** WC 缺失的原因。
+
+修复（三仓库）：
+- dsh-adaptive-context 94f4aba：补 pre-step 上报调用（renderSourceLabelled 后）+ 源码级接线守卫测试 2 用例
+- dsh-work-continuity 0fed339：补 apply registerWorkStateSection + pre-step 上报调用 + 守卫测试 2 用例
+- dsh-inject-scheduler 81bae2b：m5-timing 时序语义固化测试（两次 notify 语义 + 等待路径 strict/non-strict 均注册成功）
+- 测试：ACP 18 / WC 28 / scheduler 30 全绿
+
+教训（已入 dev-lessons 候选）：字符串 includes 守卫必须行级 trim 精确匹配；接线类修改要加源码级守卫测试。
 
 ## 1. 装配内容（已完成，全部就位）
 
