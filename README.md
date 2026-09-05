@@ -1,7 +1,7 @@
 # dsh-inject-scheduler · 注入调度器
 
 > 跨插件注入段注册/排序/记账的轻量调度器。DeepSeek Harness 插件，官方 storageDomain 承载，零自建存储。
-> 状态：**M1 开发中**（骨架 + storageDomain 记账表）。里程碑与决策见 docs/。
+> 状态：**M1 完成**（骨架 + storageDomain 记账表，8/8 测试绿）；M2 段注册 API + ACP/WC 接入待拍板。里程碑与决策见 docs/。
 
 ## 这是什么，解决什么问题
 
@@ -46,7 +46,7 @@ pnpm test        # node --test 全绿
 
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
-| M1 | 骨架 + storageDomain 记账表（domain 声明、sections/usage 表、domain/changed 订阅验证） | 🚧 进行中 |
+| M1 | 骨架 + storageDomain 记账表（domain 声明、sections/usage 表、domain/changed 订阅验证） | ✅ 完成（8/8 测试，feat/m1-storage-domain） |
 | M2 | 段注册 API + ACP/WC 接入（registerSection + 实际注入量上报） | 待 M1 |
 | M3 | 冲突检测 + 启动报告（同 order 段冲突显式化、每会话预算汇总） | 待 M2 |
 | M4 | B10 数据源面（注入曲线导出、事件流落地） | 待 M3 |

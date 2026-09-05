@@ -80,7 +80,19 @@ ready: boolean                                                                  
 
 ## 7. 验收（对照开工包 M1）
 
-- [ ] 插件 apply 可启动（无 host 改动）
-- [ ] domain 声明符合开工包字段面（sections/usage 两表 + refresh 三值）
-- [ ] domain/changed 可订阅（测试断言事件形状）
-- [ ] 测试全绿 + 每步提交
+- [x] 插件 apply 可启动（无 host 改动）
+- [x] domain 声明符合开工包字段面（sections/usage 两表 + refresh 三值）
+- [x] domain/changed 可订阅（测试断言事件形状）
+- [x] 测试全绿（8/8）+ 每步提交（b39bb39 / 6da5966）
+
+
+## 8. M1 完成记录（2026-09-05）
+
+- 状态：**完成**。提交 b39bb39（feat）+ 6da5966（test），分支 feat/m1-storage-domain。
+- 踩坑（已沉淀 dev-lessons）：①ctx.plugin 须模块形状对象（apply 函数丢 inject）
+  ②cordis 4 无 ctx.stop——用 fiber.dispose ③ctx.effect 回调须返回清理函数（直接执行=立即注册 disposer）
+  ④storage-domain 的 storageDomain 延迟装载——backend 必须 provide storage.backend.<name> 服务键
+  （官方 storage-json apply 同款模式）⑤node --test runner 在沙箱 spawn EPERM → 单文件直跑。
+- 决策复核：usageInputSchema 的 sessionId/date 必须 optional（omit 保留 required）——
+  与"缺省记 global/当天"的 API 语义冲突，测试即时代码审查抓出。
+- 遗留（M2 入口）：M1 未做 pre-step 观测——M2 选型 ACP 上报 vs 消息长度估算待用户拍板。
