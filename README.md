@@ -1,7 +1,7 @@
 # dsh-inject-scheduler · 注入调度器
 
 > 跨插件注入段注册/排序/记账的轻量调度器。DeepSeek Harness 插件，官方 storageDomain 承载，零自建存储。
-> 状态：**M1–M4 完成**（记账底座 + 上报接线 + 冲突/预算 + B10 数据面，27/27 绿）；M5 装配验证（需重启正式实例）待开工。里程碑与决策见 docs/。
+> 状态：**M1–M5 完成并验证**（2026-09-05：30 测试全绿、oxlint 0 告警、web profile 装配后 sections/usage 实测增长）。里程碑与决策见 docs/。
 
 ## 这是什么，解决什么问题
 
@@ -46,13 +46,27 @@ pnpm test        # node --test 全绿
 
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
-| M1 | 骨架 + storageDomain 记账表（domain 声明、sections/usage 表、domain/changed 订阅验证） | ✅ 完成（8/8 测试，feat/m1-storage-domain） |
-| M2 | 段注册 API + ACP/WC 接入（方案 A：注入方主动上报，registerSection + recordUsage 端到端） | ✅ 完成（三仓库接线，测试全绿，feat/m2-consumer-contract） |
-| M3 | 冲突检测 + 启动报告（conflictPolicy warn/reject、注册汇总日志）+ getSessionReport 每会话预算汇总 | ✅ 完成（17/17，feat/m3-conflict-budget 待合并） |
-| M4 | B10 数据源面（usageSeries 曲线 + exportState 快照 + B10-CONTRACT 消费契约） | ✅ 完成（27/27，feat/m4-b10-surface 待合并） |
-| M5 | 装配与验证（web profile 挂载，重启后零冲突、usage 增长可见） | 待 M4 |
+| M1 | 骨架 + storageDomain 记账表（domain 声明、sections/usage 表、domain/changed 订阅验证） | ✅ 完成 |
+| M2 | 段注册 API + ACP/WC 接入（方案 A：注入方主动上报，registerSection + recordUsage 端到端） | ✅ 完成（三仓库接线） |
+| M3 | 冲突检测 + 启动报告（conflictPolicy warn/reject、注册汇总日志）+ getSessionReport 每会话预算汇总 | ✅ 完成 |
+| M4 | B10 数据源面（usageSeries 曲线 + exportState 快照 + B10-CONTRACT 消费契约） | ✅ 完成 |
+| M5 | 装配与验证（web profile 挂载，重启后零冲突、usage 增长可见） | ✅ 完成（2026-09-05 两轮重启验证通过） |
 
-完整背景与选型：docs/PLAN-M1.md · 上级设计文档见 D:\DSH_workspace\docs\unified-memory-seam-design-2026-09-04.md（B9 v0.3 §4.1 P7）与 p7-inject-scheduler-kickoff-2026-09-05.md（开工包）。
+完整背景与选型：docs/PLAN-M1.md（B9 v0.3 统一记忆 Seam §4.1 P7 交付）· 装配与验证记录：docs/M5-ASSEMBLY.md。
+
+## 安装（dsh）
+
+```sh
+# 一键（GitHub 源，bundle patch 自动挂载 inject-scheduler 条目，无配置项）
+dsh plugin --profile <name> add github:Icstick/dsh-inject-scheduler
+```
+
+要求宿主提供官方 `@deepseek-ai/dsh-storage-domain`（≥0.1.2-rc.1，dsh 官方内置）——
+数据落官方 storageDomain（域 `inject_scheduler`），**零自建存储**。
+
+接入方（ACP composer / WC work_state / 未来注入段）经 `ctx.get('injectScheduler')` 可选接入：
+registerSection 声明段（key/order/budget/unit），注入后 recordUsage 上报——全程 fail-open，
+调度器缺失不影响宿主与各注入方。消费契约见 docs/B10-CONTRACT.md。
 
 ## License
 

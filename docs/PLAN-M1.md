@@ -1,7 +1,7 @@
 # PLAN-M1 — 骨架 + storageDomain 记账表
 
 > dsh-inject-scheduler · M1 细化设计。上级：docs/p7-inject-scheduler-kickoff-2026-09-05.md（开工包，M1–M5 里程碑）
-> 与 D:\DSH_workspace\docs\unified-memory-seam-design-2026-09-04.md（B9 v0.3 §4 P7）。日期：2026-09-05。
+> 与 D:\DSH_workspace\docs\plugins\unified-memory-seam-design-2026-09-04.md（B9 v0.3 §4 P7）。日期：2026-09-05。
 
 ## 1. M1 目标（开工包原文）
 
