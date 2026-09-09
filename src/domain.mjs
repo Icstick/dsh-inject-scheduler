@@ -17,6 +17,28 @@ export const REFRESH_MODES = ['frozen', 'reload', 'per-turn']
 /** 段预算单位（M2 定）：usage.injectedChars 恒为字符数；unit 只标注 budgetChars 的计值口径 */
 export const BUDGET_UNITS = ['chars', 'tokens']
 
+/** usage 归因置信度（2026-09-09，对齐 dsh-agent-budget 的 accuracy 三态）：
+ *  reported = 注入方自报的实测值；estimated = 经换算/估算得到；unknown = 缺失或写入失败。
+ *  纪律：自报值不得伪装成量测值；缺失记 unknown，绝不静默记 0。 */
+export const USAGE_CONFIDENCES = ['reported', 'estimated', 'unknown']
+
+/**
+ * order 分带（2026-09-09）：把「谁该排前面」从巧合变成契约。
+ * 与生态既有约定对齐（dsh-prompt-studio / dsh-inject-system-prompt 的 -100 身份 / 0 persona / 100-199 工具），
+ * 中间 1..99 留给上下文与记忆段（acp.composer=10 / wc.work_state=20 落此带）。
+ * @param {number} order
+ * @returns {'identity'|'persona'|'context'|'tools'|'tail'}
+ */
+export function bandOf(order) {
+  const n = Number(order)
+  if (!Number.isFinite(n)) return 'context'
+  if (n < 0) return 'identity'
+  if (n === 0) return 'persona'
+  if (n < 100) return 'context'
+  if (n < 200) return 'tools'
+  return 'tail'
+}
+
 /** 段 key 命名：插件命名空间小写点分（如 acp.composer / wc.work_state） */
 export const SECTION_KEY_RE = /^[a-z][a-z0-9_.-]{0,63}$/
 
@@ -46,6 +68,8 @@ export const sectionRecordSchema = z.object({
   key: z.string().regex(SECTION_KEY_RE),
   plugin: z.string().min(1).max(128),
   order: z.number().int(),
+  /** 同 order 内的确定性裁决位（小者靠前；缺省 0）——排序键 = (order, rank, key) */
+  rank: z.number().int().default(0),
   budgetChars: z.number().int().nonnegative(),
   unit: z.enum(BUDGET_UNITS).default('chars'),
   refresh: z.enum(REFRESH_MODES),
@@ -59,6 +83,8 @@ export const usageRecordSchema = z.object({
   section: z.string().regex(SECTION_KEY_RE),
   injectedChars: z.number().int().nonnegative(),
   count: z.number().int().nonnegative(),
+  /** 归因置信度：多条累加时取最弱（unknown > estimated > reported 的降级方向） */
+  confidence: z.enum(USAGE_CONFIDENCES).default('reported'),
   updatedAt: z.number().int().nonnegative(),
 })
 
@@ -73,6 +99,7 @@ export const usageInputSchema = z.object({
   date: dateField.optional(),
   section: z.string().regex(SECTION_KEY_RE),
   injectedChars: z.number().int().nonnegative(),
+  confidence: z.enum(USAGE_CONFIDENCES).default('reported'),
 })
 
 /** inject_scheduler domain v1 */

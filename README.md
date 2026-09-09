@@ -1,7 +1,8 @@
 # dsh-inject-scheduler · 注入调度器
 
 > 跨插件注入段注册/排序/记账的轻量调度器。DeepSeek Harness 插件，官方 storageDomain 承载，零自建存储。
-> 状态：**M1–M5 完成并验证**（2026-09-05：30 测试全绿、oxlint 0 告警、web profile 装配后 sections/usage 实测增长）。里程碑与决策见 docs/。
+> 状态：**M1–M5 完成并验证**（2026-09-05：30 测试全绿、oxlint 0 告警、web profile 装配后 sections/usage 实测增长）。
+> **2026-09-09 同行调研改善**：order 分带 + rank 裁决（排序键 `(order, rank, key)`）、usage 置信度三态（`reported/estimated/unknown`，累加取最弱）、**census 对账**（实际注入面 vs 注册表差集，让不接入的注入方可见）。35 测试全绿。
 
 ## 这是什么，解决什么问题
 
