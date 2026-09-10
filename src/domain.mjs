@@ -12,10 +12,10 @@ import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 
 /** 注入段刷新语义（开工包字段面；M1 仅存储，M3 排序阶段消费） */
-export const REFRESH_MODES = ['frozen', 'reload', 'per-turn']
+const REFRESH_MODES = ['frozen', 'reload', 'per-turn']
 
 /** 段预算单位（M2 定）：usage.injectedChars 恒为字符数；unit 只标注 budgetChars 的计值口径 */
-export const BUDGET_UNITS = ['chars', 'tokens']
+const BUDGET_UNITS = ['chars', 'tokens']
 
 /** usage 归因置信度（2026-09-09，对齐 dsh-agent-budget 的 accuracy 三态）：
  *  reported = 注入方自报的实测值；estimated = 经换算/估算得到；unknown = 缺失或写入失败。
@@ -40,7 +40,7 @@ export function bandOf(order) {
 }
 
 /** 段 key 命名：插件命名空间小写点分（如 acp.composer / wc.work_state） */
-export const SECTION_KEY_RE = /^[a-z][a-z0-9_.-]{0,63}$/
+const SECTION_KEY_RE = /^[a-z][a-z0-9_.-]{0,63}$/
 
 /** usage 表 key 分隔符（sessionId=uuid、date=YYYY-MM-DD、section 均不含此串） */
 export const USAGE_KEY_SEP = '::'
