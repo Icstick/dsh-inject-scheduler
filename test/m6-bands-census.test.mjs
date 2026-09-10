@@ -3,6 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { harness } from './helpers/harness.mjs'
 import { bandOf, USAGE_CONFIDENCES } from '../src/domain.mjs'
+import { CENSUS_CACHE_LIMIT } from '../src/service.mjs'
 
 const sid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
 
@@ -67,6 +68,24 @@ test('getSessionReport：带 band / rank / confidence', async () => {
     assert.equal(acp.confidence, 'reported')
     assert.equal(wc.confidence, 'estimated')
     assert.equal(rep.census, null, '未观测 → census 为 null，不伪造')
+  } finally {
+    await h.dispose()
+  }
+})
+
+test('census：缓存有界——超上界按插入序淘汰最旧会话（对齐 RecallThrottle/ClockThrottle）', async () => {
+  const h = await harness()
+  try {
+    const total = CENSUS_CACHE_LIMIT + 5
+    for (let i = 0; i < total; i++) {
+      h.scheduler.recordCensus({ sessionId: 'sess-' + String(i).padStart(5, '0'), observed: ['some-plugin'] })
+    }
+    assert.equal(h.scheduler.getCensus('sess-00000'), null, '最旧的 5 个会话应被淘汰（旧实现无上界、永远留着）')
+    assert.equal(h.scheduler.getCensus('sess-00004'), null, '最旧的 5 个会话应被淘汰')
+    assert.equal(h.scheduler.getCensus('sess-00005')?.sessionId, 'sess-00005', '第 2001 个之后仍在界内')
+    assert.equal(h.scheduler.getCensus('sess-' + String(total - 1).padStart(5, '0'))?.sessionId, 'sess-' + String(total - 1).padStart(5, '0'), '最新一条必须保留')
+    // 全局读（不带 sessionId）= 最近一次观测，不受淘汰影响
+    assert.equal(h.scheduler.getCensus()?.sessionId, 'sess-' + String(total - 1).padStart(5, '0'))
   } finally {
     await h.dispose()
   }

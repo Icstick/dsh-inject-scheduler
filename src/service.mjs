@@ -35,6 +35,21 @@ const isMissingKey = (err) =>
   err?.code === 'missing-key' || /missing-key/.test(String(err?.message ?? err))
 
 /**
+ * census 会话缓存上界（2026-09-10 补）。
+ * 同生态的「按会话缓存」另两处都做了有界淘汰——dsh-knowledge-recall/src/recall.mjs
+ * RecallThrottle(limit=2000) 与 dsh-time-ink/src/clock.mjs ClockThrottle(limit=2000)，
+ * 按插入序淘汰最旧；只有 inject-scheduler 这处 Map 只写不淘汰，headless 常驻实例
+ * 会随会话数缓慢增长（单条 census 两个字符串数组，量级 KB）。此处对齐同一规则与同一上界。
+ */
+export const CENSUS_CACHE_LIMIT = 2000
+
+/** 有界写入：超过上界时按插入序淘汰最旧会话（Map 保序）。 */
+function putBounded(map, key, value, limit) {
+  if (map.size >= limit && !map.has(key)) map.delete(map.keys().next().value)
+  map.set(key, value)
+}
+
+/**
  * 构造 ctx.injectScheduler 服务（纯内存读 + 域写链写，无自有状态）。
  * @param {import('@deepseek-ai/dsh-storage-domain').Domain} domain - inject_scheduler domain（open 后）
  * @param {object} [ctx] - 插件 ctx（提供 logger；缺省无日志——冲突 warn 仅降级为静默注册）
@@ -47,7 +62,8 @@ export function createInjectSchedulerService(domain, ctx, options = {}) {
   const sections = domain.table('sections')
   const usage = domain.table('usage')
   const log = (level, msg) => ctx?.logger?.[level]?.(msg)
-  /** census 观测缓存（内存态，不落 domain——观测数据不是权威数据） */
+  /** census 观测缓存（内存态，不落 domain——观测数据不是权威数据）；
+   *  有界：上界 CENSUS_CACHE_LIMIT，超出按插入序淘汰最旧会话（对齐 RecallThrottle/ClockThrottle） */
   const censusBySession = new Map()
 
   /** 统一输入校验面：合法 → {ok:true, value}；非法 → {ok:false, error}（与对外 API 同构） */
@@ -142,7 +158,7 @@ export function createInjectSchedulerService(domain, ctx, options = {}) {
       /** 已注册但本轮未注入 = 节流/未触发/空转，需要与故障区分 */
       silent: registeredUniq.filter((p) => !observedUniq.includes(p)),
     }
-    censusBySession.set(sessionId, census)
+    putBounded(censusBySession, sessionId, census, CENSUS_CACHE_LIMIT)
     return census
   }
 
