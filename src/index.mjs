@@ -31,6 +31,36 @@ export async function apply(ctx, config = {}) {
   })
   ctx.provide('injectScheduler', service)
 
+  // P0-1 census（2026-09-09）：只读观察本轮实际注入的 plugin，与注册表做差集。
+  // 零侵入——不改任何注入方的实现、不接管组装；next() 的结果原样返回。
+  // 这是唯一能看见「不调用 ctx.get('injectScheduler') 的注入方」的办法。
+  // census 的最小可见出口：未注册的注入方在日志里点名（同一集合只报一次，避免每轮刷屏）。
+  // 真正的消费面是 B10 面板（getSessionReport().census）。
+  let lastUnregisteredSig = ''
+  ctx.on('agent/pre-step', async (payload, next) => {
+    const decision = await next()
+    try {
+      const messages = Array.isArray(decision?.messages) ? decision.messages : []
+      const observed = []
+      for (const m of messages) {
+        const src = m?.source
+        if (src && src.kind === 'plugin' && src.plugin) observed.push(String(src.plugin))
+      }
+      if (observed.length > 0) {
+        const census = service.recordCensus({ sessionId: payload?.agent?.session?.id ?? '', observed })
+        const sig = census.unregistered.slice().sort().join(',')
+        if (sig && sig !== lastUnregisteredSig) {
+          lastUnregisteredSig = sig
+          ctx.logger?.warn?.('[inject-scheduler] census: unregistered injectors observed (never call registerSection): '
+            + sig + ' — registered: ' + census.registered.join(', '))
+        }
+      }
+    } catch (err) {
+      ctx.logger?.warn?.('[inject-scheduler] census failed: ' + (err instanceof Error ? err.message : String(err)))
+    }
+    return decision
+  })
+
   // domain/changed 订阅：本域事件的写链序流（= B10 面板数据源；M1 先验证通路）
   ctx.on('domain/changed', (change) => {
     if (!config.verbose || change.domain !== DOMAIN_NAME) return

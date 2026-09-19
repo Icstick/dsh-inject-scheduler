@@ -10,12 +10,44 @@
 // 修法：service 级微队列把一次 registerSection/recordUsage 整体串成宏作业（见 enqueue）。
 
 import {
-  DOMAIN_NAME, GLOBAL_SESSION, USAGE_KEY_SEP, localDateOf,
+  DOMAIN_NAME, GLOBAL_SESSION, USAGE_KEY_SEP, localDateOf, bandOf,
   registerInputSchema, usageInputSchema,
 } from './domain.mjs'
 
+/** 置信度降级序：unknown > estimated > reported（多条累加取最弱） */
+const CONF_RANK = { reported: 0, estimated: 1, unknown: 2 }
+function weakestConfidence(a, b) {
+  const ra = CONF_RANK[a] ?? 2
+  const rb = CONF_RANK[b] ?? 2
+  if (ra === rb) return a ?? b ?? 'unknown'
+  return ra > rb ? (a ?? 'unknown') : (b ?? 'unknown')
+}
+
+/** 段/报告统一排序键：(order, rank, key)——跨 step 确定性 */
+function compareSections(a, b) {
+  return (a.order - b.order)
+    || ((a.rank ?? 0) - (b.rank ?? 0))
+    || (a.section < b.section ? -1 : a.section > b.section ? 1 : 0)
+    || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
+}
+
 const isMissingKey = (err) =>
   err?.code === 'missing-key' || /missing-key/.test(String(err?.message ?? err))
+
+/**
+ * census 会话缓存上界（2026-09-10 补）。
+ * 同生态的「按会话缓存」另两处都做了有界淘汰——dsh-knowledge-recall/src/recall.mjs
+ * RecallThrottle(limit=2000) 与 dsh-time-ink/src/clock.mjs ClockThrottle(limit=2000)，
+ * 按插入序淘汰最旧；只有 inject-scheduler 这处 Map 只写不淘汰，headless 常驻实例
+ * 会随会话数缓慢增长（单条 census 两个字符串数组，量级 KB）。此处对齐同一规则与同一上界。
+ */
+export const CENSUS_CACHE_LIMIT = 2000
+
+/** 有界写入：超过上界时按插入序淘汰最旧会话（Map 保序）。 */
+function putBounded(map, key, value, limit) {
+  if (map.size >= limit && !map.has(key)) map.delete(map.keys().next().value)
+  map.set(key, value)
+}
 
 /**
  * 构造 ctx.injectScheduler 服务（纯内存读 + 域写链写，无自有状态）。
@@ -30,6 +62,9 @@ export function createInjectSchedulerService(domain, ctx, options = {}) {
   const sections = domain.table('sections')
   const usage = domain.table('usage')
   const log = (level, msg) => ctx?.logger?.[level]?.(msg)
+  /** census 观测缓存（内存态，不落 domain——观测数据不是权威数据）；
+   *  有界：上界 CENSUS_CACHE_LIMIT，超出按插入序淘汰最旧会话（对齐 RecallThrottle/ClockThrottle） */
+  const censusBySession = new Map()
 
   /** 统一输入校验面：合法 → {ok:true, value}；非法 → {ok:false, error}（与对外 API 同构） */
   /** 写宏作业队列：把"检测/读 + 回退写"的复合操作串成单链节（域写链不覆盖复合窗口） */
@@ -92,17 +127,49 @@ export function createInjectSchedulerService(domain, ctx, options = {}) {
         ...cur,
         injectedChars: cur.injectedChars + step,
         count: cur.count + 1,
+        // 置信度取最弱：一旦有未知/估算混入，就不能继续声称是实测值
+        confidence: weakestConfidence(cur.confidence, r.value.confidence),
         updatedAt: now(),
       }))
       return { ok: true, key, total: next.injectedChars, count: next.count }
     } catch (err) {
       if (isMissingKey(err)) {
-        const record = { ...base, injectedChars: step, count: 1, updatedAt: now() }
+        const record = { ...base, injectedChars: step, count: 1, confidence: r.value.confidence, updatedAt: now() }
         await usage.put(key, record)
         return { ok: true, key, total: record.injectedChars, count: 1 }
       }
       throw err
     }
+  }
+
+  /** census 写入（内存态；只读观测，不落 domain） */
+  function recordCensusInner(input = {}) {
+    const observedUniq = [...new Set((Array.isArray(input.observed) ? input.observed : [])
+      .map((v) => String(v ?? '')).filter(Boolean))]
+    const registeredUniq = [...new Set([...sections.entries()].map(([, v]) => v.plugin))]
+    const sessionId = typeof input.sessionId === 'string' && input.sessionId ? input.sessionId : GLOBAL_SESSION
+    const census = {
+      sessionId,
+      observedAt: now(),
+      observed: observedUniq,
+      registered: registeredUniq,
+      /** 实际注入但未注册 = 调度器看不见的注入方（碎片化的真实来源） */
+      unregistered: observedUniq.filter((p) => !registeredUniq.includes(p)),
+      /** 已注册但本轮未注入 = 节流/未触发/空转，需要与故障区分 */
+      silent: registeredUniq.filter((p) => !observedUniq.includes(p)),
+    }
+    putBounded(censusBySession, sessionId, census, CENSUS_CACHE_LIMIT)
+    return census
+  }
+
+  /** 最近一次 census（给 sessionId 则取该会话，否则取全局最近一次）；无观测 → null */
+  function getCensusInner(sessionId) {
+    if (typeof sessionId === 'string' && sessionId) return censusBySession.get(sessionId) ?? null
+    let latest = null
+    for (const c of censusBySession.values()) {
+      if (!latest || c.observedAt >= latest.observedAt) latest = c
+    }
+    return latest
   }
 
   return {
@@ -124,9 +191,30 @@ export function createInjectSchedulerService(domain, ctx, options = {}) {
       return enqueue(() => recordUsageInner(input))
     },
 
-    /** 段注册表快照（按 order 升序；同步读，来自域内存态） */
+    /**
+     * 段注册表快照（同步读，来自域内存态）。
+     * 排序键 = (order, rank, key)（2026-09-09）：order 分带 + 同带内 rank 裁决 + key 兜底，
+     * 保证跨 step 确定性（同名/同 order 不再靠注册顺序碰运气）。
+     */
     listSections() {
-      return [...sections.entries()].map(([, v]) => v).sort((a, b) => a.order - b.order)
+      return [...sections.entries()].map(([, v]) => v).sort(compareSections)
+    },
+
+    /**
+     * P0-1 census（2026-09-09）：实际注入面 vs 注册表对账。
+     *
+     * 只读、零侵入：由入口的 pre-step 观察者把「本轮真实注入的 plugin」喂进来，
+     * 服务与注册表做差集——一个不调用 ctx.get('injectScheduler') 的插件对我们完全隐形，
+     * 这是唯一能看见它的办法（借鉴 dsh-granular-prompt 的 census 思路，但不接管组装）。
+     * @param {{sessionId?: string, observed?: string[]}} input
+     */
+    recordCensus(input = {}) {
+      return recordCensusInner(input)
+    },
+
+    /** 最近一次 census（给 sessionId 则取该会话，否则取全局最近一次）；无观测 → null */
+    getCensus(sessionId) {
+      return getCensusInner(sessionId)
     },
 
     /** 用量账过滤读；过滤条件缺省 = 全量 */
@@ -189,9 +277,10 @@ export function createInjectSchedulerService(domain, ctx, options = {}) {
       const rows = this.getUsage(filter)
       const bySection = new Map()
       for (const row of rows) {
-        const agg = bySection.get(row.section) ?? { injectedChars: 0, count: 0 }
+        const agg = bySection.get(row.section) ?? { injectedChars: 0, count: 0, confidence: 'reported' }
         agg.injectedChars += row.injectedChars
         agg.count += row.count
+        agg.confidence = weakestConfidence(agg.confidence, row.confidence)
         bySection.set(row.section, agg)
       }
       const sectionRows = [...sections.entries()].map(([, v]) => v)
@@ -212,15 +301,19 @@ export function createInjectSchedulerService(domain, ctx, options = {}) {
           section: s.key,
           plugin: s.plugin,
           order: s.order,
+          band: bandOf(s.order),
+          rank: s.rank ?? 0,
           unit: s.unit,
           budgetChars: s.budgetChars,
           injectedChars,
           count: agg.count,
+          // 自报 ≠ 实测：把归因置信度带到面板，缺失记 unknown（不静默当 0）
+          confidence: agg.confidence ?? 'unknown',
           estimatedTokens,
           usageRatio,
         })
       }
-      report.sort((a, b) => a.order - b.order)
+      report.sort(compareSections)
       const totals = {
         injectedChars: report.reduce((sum, r) => sum + r.injectedChars, 0),
         estimatedTokens: report.reduce((sum, r) => sum + (r.estimatedTokens ?? 0), 0),
@@ -232,6 +325,8 @@ export function createInjectSchedulerService(domain, ctx, options = {}) {
         charPerToken,
         sections: report,
         totals,
+        // P0-1：把「注册面 vs 实际注入面」的差异一并带出来（无观测 → null）
+        census: getCensusInner(filter.sessionId),
       }
     },
   }

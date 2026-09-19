@@ -41,6 +41,14 @@
 - **date 为本地日**（宿主时区）；跨时区展示由消费方自行换算。
 - **'global' 会话槽**：无 session 上下文的注入（如 headless/无 agent session）记入此行。
 - **count 是上报笔数**，不是注入消息条数的语义保证（一轮一次上报=笔+1）。
+- **confidence（2026-09-09）**：每条 usage 带 `reported | estimated | unknown`——自报值不得伪装成
+  量测值；多条累加**取最弱**（一旦有 unknown 混入就不再声称实测）；缺失记 `unknown`，绝不静默记 0。
+- **band / rank（2026-09-09）**：order 分带 `identity(<0) / persona(0) / context(1..99) /
+  tools(100..199) / tail(>=200)`（对齐 dsh-prompt-studio 与 dsh-inject-system-prompt 的既有约定，
+  ACP=10 / WC=20 落在 context 带）；同带内用 `rank` 裁决。排序键 = `(order, rank, key)`，
+  跨 step 确定性。`getSessionReport` 行带 band/rank。
+- **census（2026-09-09）**：`getSessionReport().census` = 最近一次「实际注入面 vs 注册表」差集，
+  `unregistered` = 未注册的注入方（调度器原本完全看不见），`silent` = 已注册但本轮未注入。
 
 ## 5. 曲线与预算对照（消费方示例）
 
@@ -69,3 +77,8 @@ version 语义：domain/快照结构破坏性变更时递增；消费方按 form
   容量治理（归档/折叠）在远期（与 ACP P6 联动），届时快照 version 或新增归档段。
 - domain 是"派生态"（invalidRecords=backup-and-skip）：坏记录被移走视同缺失，
   B10 面板若需要权威审计请以 ACP ledger 为准——usage 是观测账不是事实账。
+- **单写者假设（2026-09-09 显式化）**：`recordUsage` 的「update missing-key → 回退 put」跨两个
+  域作业，服务级微队列只保证**单进程内**串行；跨进程（多实例共写同一 domain）不保证，
+  本插件也不引入跨进程锁。多实例场景请让每实例用自己的 storage 目录。
+- **census 是观测不是事实**：census 只覆盖当前进程本轮真实注入的 plugin（来自 pre-step 观察）；
+  未观测到 ≠ 未注入（可能该轮未触发），消费方不要把它当审计。
