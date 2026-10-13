@@ -3,6 +3,10 @@
 > 跨插件注入段注册/排序/记账的轻量调度器。DeepSeek Harness 插件，官方 storageDomain 承载，零自建存储。
 > 状态：**M1–M5 完成并验证**（2026-09-05：30 测试全绿、oxlint 0 告警、web profile 装配后 sections/usage 实测增长）。
 > **2026-09-09 同行调研改善**：order 分带 + rank 裁决（排序键 `(order, rank, key)`）、usage 置信度三态（`reported/estimated/unknown`，累加取最弱）、**census 对账**（实际注入面 vs 注册表差集，让不接入的注入方可见）。35 测试全绿。
+> **2026-10-02 census 观察面形状归一**：message.source 的权威形状是 `{ kind: 'plugin', plugin: '<name>' }`
+> （上游 cookbook / agent README），本机四家注入方（ACP / KR / WC / maid）实际发的是 `{ kind: 'plugin:<name>' }`。
+> 观察面现在两种都认（plugin 字段优先，否则取 `plugin:` 后缀；其余 kind 一律不算）——
+> 此前只认前者，四家永远进不了 observed、差集空转。四家仓库不改（只报告）。
 
 ## 这是什么，解决什么问题
 

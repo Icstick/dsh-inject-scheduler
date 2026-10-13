@@ -20,6 +20,35 @@ export const Config = z.object({
   charPerToken: z.number().min(0.1).max(10).default(1.5),
 })
 
+/**
+ * 从 message.source 取注入方名（census 观察面入口归一，2026-10-02 修。
+ * 消费侧兼容，不改任何注入方仓库）。
+ *
+ * 权威形状 = { kind: 'plugin', plugin: '<name>' }——上游 docs/cookbook/adding-a-tool.md、
+ * packages/core/agent/README.md、time-context 与 repeat-tool-reminder 的 README 口径一致
+ * （packages/llm/llm/src/message.ts 的 MessageSourceMap "merge-extensible、switch kind、
+ * 未知 kind 往下走"），本机 dsh-time-ink/src/index.mjs:48 也照此发。
+ *
+ * 但本机另有四家注入方实际发的是 { kind: 'plugin:<name>' }（**没有 plugin 字段**）：
+ * dsh-adaptive-context/src/index.mjs:758、dsh-knowledge-recall/src/index.mjs:183、
+ * dsh-work-continuity/src/index.mjs:459、dsh-context-maid/src/pinner.mjs:125。
+ * 旧判据 src.kind === 'plugin' && src.plugin 只认前者 —— 于是这四家在本 census 的
+ * observed 里**永远缺席**：差集恒缺四家、unregistered 里永远挂着 ACP，P0-1 机制空转
+ * （2026-10-02 由 test/prestep-contract.test.mjs 抓到）。
+ *
+ * 因此这里两种都认：plugin 字段优先（权威形状），否则 kind 以 'plugin:' 开头时取后缀。
+ * 只有 kind 属 plugin 族才认——非插件来源（user/tool/runtime-context…）即使带了个
+ * 同名 plugin 字段也不算注入方，避免把别的来源误算进来。
+ * 四家偏离方按「只报告、不改它们的仓」处理，是否归一是各自 repo 的决定。
+ */
+function pluginNameOf(source) {
+  if (!source || typeof source !== 'object') return ''
+  const kind = source.kind
+  if (typeof kind !== 'string' || (kind !== 'plugin' && !kind.startsWith('plugin:'))) return ''
+  if (source.plugin) return String(source.plugin)
+  return kind.startsWith('plugin:') ? kind.slice('plugin:'.length) : ''
+}
+
 export async function apply(ctx, config = {}) {
   const domain = await ctx.storageDomain.open(injectSchedulerDomainSpec)
   // effect 回调必须返回清理函数（卸载时调用）——直接执行会被当作立即注册的 disposer
@@ -36,6 +65,7 @@ export async function apply(ctx, config = {}) {
   // 这是唯一能看见「不调用 ctx.get('injectScheduler') 的注入方」的办法。
   // census 的最小可见出口：未注册的注入方在日志里点名（同一集合只报一次，避免每轮刷屏）。
   // 真正的消费面是 B10 面板（getSessionReport().census）。
+  // 观察面的 source 形状归一（两种 plugin 形状）见下方 pluginNameOf。
   let lastUnregisteredSig = ''
   ctx.on('agent/pre-step', async (payload, next) => {
     const decision = await next()
@@ -43,8 +73,8 @@ export async function apply(ctx, config = {}) {
       const messages = Array.isArray(decision?.messages) ? decision.messages : []
       const observed = []
       for (const m of messages) {
-        const src = m?.source
-        if (src && src.kind === 'plugin' && src.plugin) observed.push(String(src.plugin))
+        const plugin = pluginNameOf(m?.source)
+        if (plugin) observed.push(plugin)
       }
       if (observed.length > 0) {
         const census = service.recordCensus({ sessionId: payload?.agent?.session?.id ?? '', observed })
